@@ -1,0 +1,237 @@
+#include <stdio.h>
+#include <omp.h>
+
+#define N 1000000
+
+int main() {
+    static int vec[N];
+    int scalar = 7;
+
+    #pragma omp parallel for
+    for (int i = 0; i < N; i++) {
+        vec[i] = i + scalar;
+    }
+
+    printf("Vector addition complete. vec[0]=%d, vec[%d]=%d\n", vec[0], N-1, vec[N-1]);
+    return 0;
+}
+
+
+
+
+#include <stdio.h>
+#include <omp.h>
+
+int main() {
+    omp_set_num_threads(5);
+
+    #pragma omp parallel
+    {
+        printf("Hello World from thread %d\n", omp_get_thread_num());
+    }
+    return 0;
+}
+
+
+
+#include <stdio.h>
+#include <omp.h>
+
+int main() {
+    long steps = 1000000;
+    double step = 1.0 / steps;
+    double pi = 0.0;
+
+    #pragma omp parallel for reduction(+:pi)
+    for(long i = 0; i < steps; i++) {
+        double x = (i + 0.5) * step;
+        pi += 4.0 / (1.0 + x * x);
+    }
+
+    pi *= step;
+
+    printf("Calculated Pi: %f\n", pi);
+    return 0;
+}
+
+
+
+
+
+-----------------------------------------------------------------------------------------------
+
+
+c
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+
+void run_benchmark(int size, int num_threads) {
+    int i, j;
+
+    double **A = (double **)malloc(size * sizeof(double *));
+    double **B = (double **)malloc(size * sizeof(double *));
+    double **C = (double **)malloc(size * sizeof(double *));
+
+    for (i = 0; i < size; i++) {
+        A[i] = (double *)malloc(size * sizeof(double));
+        B[i] = (double *)malloc(size * sizeof(double));
+        C[i] = (double *)malloc(size * sizeof(double));
+    }
+
+    // Initialize matrices
+    for (i = 0; i < size; i++) {
+        for (j = 0; j < size; j++) {
+            A[i][j] = 1.0;
+            B[i][j] = 2.0;
+        }
+    }
+
+    double start = omp_get_wtime();
+
+    #pragma omp parallel for private(j) num_threads(num_threads)
+    for (i = 0; i < size; i++) {
+        for (j = 0; j < size; j++) {
+            C[i][j] = A[i][j] + B[i][j];
+        }
+    }
+
+    double end = omp_get_wtime();
+    double time_taken = end - start;
+
+    printf("Matrix Size: %dx%d, Threads: %d, Time: %f seconds\n",
+           size, size, num_threads, time_taken);
+
+    // Free memory
+    for (i = 0; i < size; i++) {
+        free(A[i]);
+        free(B[i]);
+        free(C[i]);
+    }
+
+    free(A);
+    free(B);
+    free(C);
+}
+
+int main() {
+    int sizes[] = {250, 500, 750, 1000, 2000};
+    int threads[] = {1, 2, 4, 8};
+    int i, j;
+
+    printf("Matrix Addition Benchmark\n");
+
+    for (i = 0; i < 5; i++) {
+        for (j = 0; j < 4; j++) {
+            run_benchmark(sizes[i], threads[j]);
+        }
+    }
+
+    return 0;
+}
+
+---------------------------------------------------------------------------------------------------
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+
+#define SIZE 200
+
+void benchmark_static(int chunk_size) {
+    double A[SIZE], scalar = 5.0;
+    int i;
+
+    for (i = 0; i < SIZE; i++)
+        A[i] = (double)i;
+
+    double start = omp_get_wtime();
+
+    #pragma omp parallel for schedule(static, chunk_size) num_threads(4)
+    for (i = 0; i < SIZE; i++) {
+        A[i] += scalar;
+    }
+
+    double end = omp_get_wtime();
+
+    printf("Schedule: STATIC, Chunk Size: %d, Time: %f seconds\n",
+           chunk_size, end - start);
+}
+
+void benchmark_dynamic(int chunk_size) {
+    double A[SIZE], scalar = 5.0;
+    int i;
+
+    for (i = 0; i < SIZE; i++)
+        A[i] = (double)i;
+
+    double start = omp_get_wtime();
+
+    #pragma omp parallel for schedule(dynamic, chunk_size) num_threads(4)
+    for (i = 0; i < SIZE; i++) {
+        A[i] += scalar;
+    }
+
+    double end = omp_get_wtime();
+
+    printf("Schedule: DYNAMIC, Chunk Size: %d, Time: %f seconds\n",
+           chunk_size, end - start);
+}
+
+void demonstrate_nowait() {
+    double A[SIZE], B[SIZE], scalar = 5.0;
+    int i;
+
+    for (i = 0; i < SIZE; i++) {
+        A[i] = (double)i;
+        B[i] = (double)i;
+    }
+
+    printf("\nDemonstrating nowait clause:\n");
+
+    #pragma omp parallel num_threads(4)
+    {
+        #pragma omp for nowait
+        for (i = 0; i < SIZE/2; i++) {
+            A[i] += scalar;
+            // Thread finishing here won't wait for others and can proceed
+        }
+
+        #pragma omp for
+        for (i = SIZE/2; i < SIZE; i++) {
+            B[i] += scalar;
+        }
+    }
+
+    printf("Nowait demo\n");
+}
+
+int main() {
+    int chunk_sizes[] = {1, 5, 10, 20, 50};
+    int i;
+
+    printf("1D Vector Scalar Addition Benchmark (Size=%d)\n", SIZE);
+
+    // Serial time for speedup calculation (approximate)
+    double A[SIZE], scalar = 5.0;
+    double start = omp_get_wtime();
+    for (i = 0; i < SIZE; i++)
+        A[i] += scalar;
+    double serial_time = omp_get_wtime() - start;
+
+    printf("Serial Time: %f seconds\n\n", serial_time);
+
+    for (i = 0; i < 5; i++) {
+        benchmark_static(chunk_sizes[i]);
+    }
+
+    printf("\n");
+
+    for (i = 0; i < 5; i++) {
+        benchmark_dynamic(chunk_sizes[i]);
+    }
+
+    demonstrate_nowait();
+
+    return 0;
+}
